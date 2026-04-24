@@ -9,21 +9,23 @@ async function getReviewSession(req, res) {
 
   const now = new Date();
 
-  // Fetch all due progress docs for this deck's cards
   const deckCards = await Card.find({ deckId }).select('_id');
   const cardIds = deckCards.map(c => c._id);
 
-  const dueProgress = await CardProgress.find({
+  // Single query: new cards always eligible; learning/mastered only if due
+  const eligible = await CardProgress.find({
     cardId: { $in: cardIds },
-    status: { $in: ['learning', 'mastered'] },
-    nextReviewDate: { $lte: now },
+    $or: [
+      { status: 'new' },
+      { status: { $in: ['learning', 'mastered'] }, nextReviewDate: { $lte: now } },
+    ],
   }).populate('cardId');
 
-  const newProgress = await CardProgress.find({
-    cardId: { $in: cardIds },
-    status: 'new',
-  }).populate('cardId');
+  // Filter out orphaned progress docs (card deleted after generation)
+  const valid = eligible.filter(p => p.cardId);
 
+  const dueProgress = valid.filter(p => p.status !== 'new');
+  const newProgress = valid.filter(p => p.status === 'new');
   const dueTodayCount = dueProgress.length;
 
   // Mix: up to 80% due cards, fill remaining slots with new cards
