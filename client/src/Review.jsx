@@ -1,5 +1,20 @@
 import { useState, useEffect } from 'react'
 
+const TYPE_LABELS = {
+  definition: 'Definition',
+  concept: 'Concept',
+  example: 'Example',
+  edge_case: 'Edge Case',
+}
+
+const QUALITY_LABELS = ['Forgot', 'Hard', 'Almost', 'Good', 'Easy', 'Perfect']
+
+function qualityClass(q) {
+  if (q <= 1) return 'fail'
+  if (q === 2) return 'mid'
+  return 'pass'
+}
+
 export default function Review({ deckId }) {
   const [cards, setCards] = useState([])
   const [dueTodayCount, setDueTodayCount] = useState(0)
@@ -50,58 +65,85 @@ export default function Review({ deckId }) {
     }
   }
 
-  if (loading) return <p>Loading cards...</p>
-  if (!cards.length) return <p>No cards due for review. Check back tomorrow!</p>
-  if (done) return <p>Session complete! {dueTodayCount} cards were due today.</p>
+  if (loading) return <p className="state-message">Loading cards…</p>
+  if (!cards.length) return <p className="state-message">No cards due for review. Check back tomorrow!</p>
+  if (done) return <p className="state-message">Session complete — {dueTodayCount} cards were due today.</p>
 
   return (
-    <div>
-      <p>Card {index + 1} of {cards.length} &nbsp;|&nbsp; {dueTodayCount} due today</p>
+    <>
+      <p className="progress">
+        {index + 1} / {cards.length} &nbsp;·&nbsp; {dueTodayCount} due today
+      </p>
 
-      <div>
-        <p><em>{current.card.type} · {current.card.concept}</em></p>
-        <h2>{current.card.front}</h2>
+      {/* Question card */}
+      <div className="card">
+        <span className="badge">
+          {TYPE_LABELS[current.card.type] || current.card.type} · {current.card.concept}
+        </span>
+        <p className="question">{current.card.front}</p>
+
+        {!revealed && (
+          <div className="input-row">
+            <input
+              value={userAnswer}
+              onChange={e => setUserAnswer(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && reveal()}
+              placeholder="Your answer…"
+              autoFocus
+            />
+            <button className="btn-check" onClick={reveal}>Check</button>
+          </div>
+        )}
       </div>
 
-      {!revealed && (
-        <div>
-          <input
-            value={userAnswer}
-            onChange={e => setUserAnswer(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && reveal()}
-            placeholder="Your answer..."
-          />
-          <button onClick={reveal}>Check</button>
-        </div>
-      )}
-
+      {/* Answer + feedback card */}
       {revealed && (
-        <div>
-          <p><strong>Correct answer:</strong> {current.card.back}</p>
+        <div className="card">
+          <p className="answer-label">Correct answer</p>
+          <p className="answer-text">{current.card.back}</p>
 
           {result?.review?.explanation && (
-            <p><strong>Explanation:</strong> {result.review.explanation}</p>
-          )}
-          {result?.review?.memoryTip && (
-            <p><strong>Memory tip:</strong> {result.review.memoryTip}</p>
+            <>
+              <hr className="divider" />
+              <div className="feedback">
+                <p className="feedback-label">Explanation</p>
+                <p className="feedback-text">{result.review.explanation}</p>
+              </div>
+            </>
           )}
 
-          {!result && (
-            <div>
-              <p>How well did you recall it? (0 = forgot, 5 = perfect)</p>
-              {[0, 1, 2, 3, 4, 5].map(q => (
-                <button key={q} onClick={() => submitQuality(q)} disabled={submitting}>
-                  {q}
-                </button>
-              ))}
+          {result?.review?.memoryTip && (
+            <div className="feedback" style={{ marginTop: 8 }}>
+              <p className="feedback-label">Memory tip</p>
+              <p className="feedback-text">{result.review.memoryTip}</p>
             </div>
           )}
 
+          {!result && (
+            <>
+              <hr className="divider" />
+              <p className="quality-prompt">How well did you recall it?</p>
+              <div className="quality-buttons">
+                {[0, 1, 2, 3, 4, 5].map(q => (
+                  <button
+                    key={q}
+                    className={`quality-btn ${qualityClass(q)}`}
+                    onClick={() => submitQuality(q)}
+                    disabled={submitting}
+                  >
+                    <span className="q-num">{q}</span>
+                    <span className="q-label">{QUALITY_LABELS[q]}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {result && (
-            <button onClick={next}>Next →</button>
+            <button className="btn-next" onClick={next}>Next →</button>
           )}
         </div>
       )}
-    </div>
+    </>
   )
 }

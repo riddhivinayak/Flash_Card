@@ -18,22 +18,39 @@ export default function App() {
       .catch(() => setError('Could not reach the server. Is it running?'))
   }, [])
 
-  if (error) return <p>{error}</p>
-  if (!decks.length) return <p>No decks found. Upload a PDF first.</p>
+  if (error) return <div className="app"><p className="state-message">{error}</p></div>
+  if (!decks.length) return <div className="app"><p className="state-message">No decks found. Upload a PDF first.</p></div>
 
   return (
-    <div>
-      <div>
-        <select value={deckId || ''} onChange={e => setDeckId(e.target.value)}>
+    <div className="app">
+      <div className="header">
+        <select
+          className="deck-select"
+          value={deckId || ''}
+          onChange={e => setDeckId(e.target.value)}
+        >
           {decks.map(d => (
             <option key={d._id} value={d._id}>{d.title}</option>
           ))}
         </select>
-        <button onClick={() => setView('review')} disabled={view === 'review'}>Review</button>
-        <button onClick={() => setView('analytics')} disabled={view === 'analytics'}>Analytics</button>
+
+        <div className="tabs">
+          <button
+            className={`tab-btn ${view === 'review' ? 'active' : ''}`}
+            onClick={() => setView('review')}
+          >
+            Review
+          </button>
+          <button
+            className={`tab-btn ${view === 'analytics' ? 'active' : ''}`}
+            onClick={() => setView('analytics')}
+          >
+            Analytics
+          </button>
+        </div>
       </div>
 
-      {view === 'review' && deckId && <Review key={deckId} deckId={deckId} />}
+      {view === 'review'    && deckId && <Review    key={deckId} deckId={deckId} />}
       {view === 'analytics' && deckId && <Analytics key={deckId} deckId={deckId} />}
     </div>
   )
