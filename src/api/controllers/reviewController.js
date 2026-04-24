@@ -2,6 +2,7 @@ const Card = require('../../db/models/Card');
 const CardProgress = require('../../db/models/CardProgress');
 const Review = require('../../db/models/Review');
 const { sm2 } = require('../../scheduler/sm2');
+const { explain } = require('../../explainer');
 
 async function getReviewSession(req, res) {
   const { id: deckId } = req.params;
@@ -81,11 +82,19 @@ async function submitReview(req, res) {
     lastReviewDate: new Date(),
   });
 
+  let explanation = null;
+  let memoryTip = null;
+  if (quality < 3) {
+    ({ explanation, memoryTip } = await explain(card, userAnswer));
+  }
+
   const review = await Review.create({
     cardId,
     deckId: card.deckId,
     quality,
     userAnswer,
+    explanation,
+    memoryTip,
   });
 
   res.status(201).json({ review, progress: { ...result, status } });
