@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const ReviewSchema = new mongoose.Schema({
+  userId:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   cardId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Card', required: true },
   deckId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Deck', required: true },
   quality:     { type: Number, min: 0, max: 5, required: true },

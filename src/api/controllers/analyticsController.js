@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Deck = require('../../db/models/Deck');
 const Review = require('../../db/models/Review');
 const CardProgress = require('../../db/models/CardProgress');
 
@@ -10,9 +11,13 @@ async function getAnalytics(req, res) {
     return res.status(400).json({ error: 'Invalid deck id' });
   }
 
-  // Review stats grouped by concept — accuracy, avg quality per concept
+  const deck = await Deck.findOne({ _id: deckObjId, userId: req.userId });
+  if (!deck) return res.status(404).json({ error: 'Deck not found' });
+
+  const userObjId = new mongoose.Types.ObjectId(req.userId);
+
   const reviewStats = await Review.aggregate([
-    { $match: { deckId: deckObjId } },
+    { $match: { deckId: deckObjId, userId: userObjId } },
     {
       $lookup: {
         from: 'cards',
@@ -38,10 +43,9 @@ async function getAnalytics(req, res) {
       },
     },
     { $project: { qualitySum: 0 } },
-    { $sort: { accuracyRate: 1 } }, // weakest first
+    { $sort: { accuracyRate: 1 } },
   ]);
 
-  // Card status counts grouped by concept
   const statusStats = await CardProgress.aggregate([
     {
       $lookup: {
@@ -65,7 +69,6 @@ async function getAnalytics(req, res) {
 
   const statusMap = Object.fromEntries(statusStats.map(s => [s._id, s]));
 
-  // If no reviews yet, return status counts only
   if (!reviewStats.length) {
     const concepts = statusStats.map(s => ({
       concept: s._id,
@@ -81,19 +84,18 @@ async function getAnalytics(req, res) {
     return res.json({ concepts, hasReviews: false });
   }
 
-  // Merge review stats with status counts
   const concepts = reviewStats.map(r => {
     const s = statusMap[r._id] || {};
     return {
-      concept:       r._id,
-      totalReviews:  r.totalReviews,
-      correctCount:  r.correctCount,
+      concept:        r._id,
+      totalReviews:   r.totalReviews,
+      correctCount:   r.correctCount,
       incorrectCount: r.incorrectCount,
-      accuracyRate:  parseFloat(r.accuracyRate.toFixed(3)),
-      avgQuality:    parseFloat(r.avgQuality.toFixed(2)),
-      newCount:      s.newCount      ?? 0,
-      learningCount: s.learningCount ?? 0,
-      masteredCount: s.masteredCount ?? 0,
+      accuracyRate:   parseFloat(r.accuracyRate.toFixed(3)),
+      avgQuality:     parseFloat(r.avgQuality.toFixed(2)),
+      newCount:       s.newCount      ?? 0,
+      learningCount:  s.learningCount ?? 0,
+      masteredCount:  s.masteredCount ?? 0,
     };
   });
 

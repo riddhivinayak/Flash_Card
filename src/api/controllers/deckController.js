@@ -15,13 +15,15 @@ async function uploadDeck(req, res) {
   }
 
   const chunks = chunkText(text);
-  const generated = await generateCards(chunks);
+  const totalWords = text.split(/\s+/).filter(Boolean).length;
+  const generated = await generateCards(chunks, totalWords);
 
   if (!generated.length) {
     return res.status(422).json({ error: 'No cards could be generated from this PDF' });
   }
 
   const deck = await Deck.create({
+    userId: req.userId,
     title: req.body.title || req.file.originalname.replace(/\.pdf$/i, ''),
     sourceFile: req.file.originalname,
   });
@@ -33,12 +35,12 @@ async function uploadDeck(req, res) {
 }
 
 async function listDecks(req, res) {
-  const decks = await Deck.find().sort({ createdAt: -1 });
+  const decks = await Deck.find({ userId: req.userId }).sort({ createdAt: -1 });
   res.json(decks);
 }
 
 async function getDeck(req, res) {
-  const deck = await Deck.findById(req.params.id);
+  const deck = await Deck.findOne({ _id: req.params.id, userId: req.userId });
   if (!deck) return res.status(404).json({ error: 'Deck not found' });
   const cardCount = await Card.countDocuments({ deckId: deck._id });
   res.json({ ...deck.toObject(), cardCount });

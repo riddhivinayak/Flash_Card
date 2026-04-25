@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authHeaders } from './App'
 
 function accuracyClass(rate) {
   if (rate >= 0.75) return 'acc-high'
@@ -11,7 +12,7 @@ export default function Analytics({ deckId }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/decks/${deckId}/analytics`)
+    fetch(`/api/decks/${deckId}/analytics`, { headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         setData(d)

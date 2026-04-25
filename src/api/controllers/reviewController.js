@@ -1,4 +1,5 @@
 const Card = require('../../db/models/Card');
+const Deck = require('../../db/models/Deck');
 const CardProgress = require('../../db/models/CardProgress');
 const Review = require('../../db/models/Review');
 const { sm2 } = require('../../scheduler/sm2');
@@ -8,12 +9,13 @@ async function getReviewSession(req, res) {
   const { id: deckId } = req.params;
   const limit = Math.min(parseInt(req.query.limit) || 20, 50);
 
-  const now = new Date();
+  const deck = await Deck.findOne({ _id: deckId, userId: req.userId });
+  if (!deck) return res.status(404).json({ error: 'Deck not found' });
 
+  const now = new Date();
   const deckCards = await Card.find({ deckId }).select('_id');
   const cardIds = deckCards.map(c => c._id);
 
-  // Single query: new cards always eligible; learning/mastered only if due
   const eligible = await CardProgress.find({
     cardId: { $in: cardIds },
     $or: [
@@ -22,14 +24,11 @@ async function getReviewSession(req, res) {
     ],
   }).populate('cardId');
 
-  // Filter out orphaned progress docs (card deleted after generation)
   const valid = eligible.filter(p => p.cardId);
-
   const dueProgress = valid.filter(p => p.status !== 'new');
   const newProgress = valid.filter(p => p.status === 'new');
   const dueTodayCount = dueProgress.length;
 
-  // Mix: up to 80% due cards, fill remaining slots with new cards
   const dueSlots = Math.min(dueProgress.length, Math.floor(limit * 0.8));
   const newSlots = Math.min(newProgress.length, limit - dueSlots);
 
@@ -61,26 +60,22 @@ async function submitReview(req, res) {
   const card = await Card.findById(cardId);
   if (!card) return res.status(404).json({ error: 'Card not found' });
 
+  const deck = await Deck.findOne({ _id: card.deckId, userId: req.userId });
+  if (!deck) return res.status(403).json({ error: 'Not authorised' });
+
   const progress = await CardProgress.findOne({ cardId });
   if (!progress) return res.status(404).json({ error: 'CardProgress not found' });
 
-  // Run SM-2
-  const result = sm2(
-    progress.easeFactor,
-    progress.interval,
-    progress.repetitions,
-    quality
-  );
+  const result = sm2(progress.easeFactor, progress.interval, progress.repetitions, quality);
 
-  // Determine new status
   let status = 'learning';
   if (result.repetitions >= 5 && quality >= 4) status = 'mastered';
 
-  await CardProgress.findByIdAndUpdate(progress._id, {
-    ...result,
-    status,
-    lastReviewDate: new Date(),
-  });
+  await CardProgress.findByIdAndUpdate(
+    progress._id,
+    { $set: { ...result, status, lastReviewDate: new Date() } },
+    { runValidators: true }
+  );
 
   let explanation = null;
   let memoryTip = null;
@@ -89,6 +84,7 @@ async function submitReview(req, res) {
   }
 
   const review = await Review.create({
+    userId: req.userId,
     cardId,
     deckId: card.deckId,
     quality,

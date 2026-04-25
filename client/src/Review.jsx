@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { authHeaders } from './App'
 
 const TYPE_LABELS = {
   definition: 'Definition',
@@ -27,7 +28,7 @@ export default function Review({ deckId }) {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/decks/${deckId}/review`)
+    fetch(`/api/decks/${deckId}/review`, { headers: authHeaders() })
       .then(r => r.json())
       .then(data => {
         setCards(data.cards || [])
@@ -46,7 +47,7 @@ export default function Review({ deckId }) {
     setSubmitting(true)
     const res = await fetch('/api/reviews', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ cardId: current.card._id, quality, userAnswer }),
     })
     const data = await res.json()
