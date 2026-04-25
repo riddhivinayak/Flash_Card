@@ -41,13 +41,35 @@ async function generateCardsFromChunk(chunk) {
 
   try {
     const result = await model.generateContent(`Text:\n${chunk}`);
-    const text = result.response.text();
-    const match = text.match(/\[[\s\S]*\]/);
-    if (!match) return [];
+    const raw = result.response.text();
 
-    const cards = JSON.parse(match[0]);
+    console.log('[generator] raw Gemini output:', raw);
+
+    // Strip markdown code fences if present
+    const cleaned = raw
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) {
+      console.error('[generator] no JSON array found in Gemini response:', cleaned);
+      return [];
+    }
+
+    let cards;
+    try {
+      cards = JSON.parse(match[0]);
+    } catch (parseErr) {
+      console.error('[generator] JSON.parse failed:', parseErr.message);
+      console.error('[generator] broken JSON:', match[0]);
+      return [];
+    }
+
     return cards.filter(c => c.type && c.concept && c.front && c.back && c.difficulty);
-  } catch {
+  } catch (err) {
+    console.error('[generator] Gemini API error:', err.message);
     return [];
   }
 }
