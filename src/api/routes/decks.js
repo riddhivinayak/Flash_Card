@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { uploadDeck, listDecks, getDeck } = require('../controllers/deckController');
+const { uploadDeck, listDecks, getDeck, getDeckCards } = require('../controllers/deckController');
 
 const router = express.Router();
 const upload = multer({
@@ -11,5 +11,6 @@ const upload = multer({
 router.post('/upload', upload.single('pdf'), uploadDeck);
 router.get('/', listDecks);
 router.get('/:id', getDeck);
+router.get('/:id/cards', getDeckCards);
 
 module.exports = router;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Review from './Review'
 import Analytics from './Analytics'
+import DeckList from './DeckList'
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem('fc_token') }
@@ -95,17 +96,17 @@ export default function App() {
   const [user, setUser] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
 
-  const [decks, setDecks] = useState([])
+  // null = deck list, string = deck detail view
   const [deckId, setDeckId] = useState(null)
-  const [view, setView] = useState('review')
-  const [error, setError] = useState(null)
+  const [deckTitle, setDeckTitle] = useState('')
+  const [view, setView] = useState('review')  // 'review' | 'analytics' | 'upload'
 
   const [file, setFile] = useState(null)
   const [title, setTitle] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
 
-  // On mount: check if token still valid by loading decks
+  // On mount: validate token
   useEffect(() => {
     if (!getToken()) { setAuthChecked(true); return }
     fetch('/api/decks', { headers: authHeaders() })
@@ -115,10 +116,6 @@ export default function App() {
       })
       .then(data => {
         if (!data) return
-        setDecks(data)
-        if (data.length) setDeckId(data[0]._id)
-        else setView('upload')
-        // Reconstruct a minimal user object from token payload
         const payload = JSON.parse(atob(getToken().split('.')[1]))
         setUser({ id: payload.userId })
         setAuthChecked(true)
@@ -128,14 +125,18 @@ export default function App() {
 
   function handleAuth(u) {
     setUser(u)
-    loadDecks()
   }
 
-  async function loadDecks() {
-    const data = await fetch('/api/decks', { headers: authHeaders() }).then(r => r.json())
-    setDecks(data)
-    if (data.length) { setDeckId(data[0]._id); setView('review') }
-    else setView('upload')
+  function selectDeck(id, title) {
+    setDeckId(id)
+    setDeckTitle(title || '')
+    setView('review')
+  }
+
+  function backToList() {
+    setDeckId(null)
+    setDeckTitle('')
+    setView('review')
   }
 
   async function handleUpload(e) {
@@ -153,12 +154,10 @@ export default function App() {
       const data = await res.json()
       if (!res.ok) return setUploadError(data.error || 'Upload failed.')
 
-      const fresh = await fetch('/api/decks', { headers: authHeaders() }).then(r => r.json())
-      setDecks(fresh)
-      setDeckId(data.deck._id)
       setFile(null)
       setTitle('')
-      setView('review')
+      // Go straight into the new deck's review
+      selectDeck(data.deck._id, data.deck.title)
     } catch {
       setUploadError('Upload failed. Is the server running?')
     } finally {
@@ -169,42 +168,24 @@ export default function App() {
   function logout() {
     clearToken()
     setUser(null)
-    setDecks([])
     setDeckId(null)
+    setDeckTitle('')
     setView('review')
   }
 
   if (!authChecked) return null
-
   if (!user) return <AuthScreen onAuth={handleAuth} />
 
-  if (error) return <div className="app"><p className="state-message">{error}</p></div>
-
-  return (
-    <div className="app">
-      <div className="header">
-        {decks.length > 0 && (
-          <select className="deck-select" value={deckId || ''} onChange={e => setDeckId(e.target.value)}>
-            {decks.map(d => <option key={d._id} value={d._id}>{d.title}</option>)}
-          </select>
-        )}
-
-        <div className="tabs">
-          {decks.length > 0 && (
-            <>
-              <button className={`tab-btn ${view === 'review' ? 'active' : ''}`} onClick={() => setView('review')}>Review</button>
-              <button className={`tab-btn ${view === 'analytics' ? 'active' : ''}`} onClick={() => setView('analytics')}>Analytics</button>
-            </>
-          )}
-          <button className={`tab-btn ${view === 'upload' ? 'active' : ''}`} onClick={() => setView('upload')}>+ Upload</button>
-          <button className="tab-btn" onClick={logout}>Logout</button>
+  // ── Upload screen (accessible from both deck list and deck detail) ──
+  if (view === 'upload') {
+    return (
+      <div className="app">
+        <div className="header">
+          <button className="btn-back" onClick={backToList}>← Back</button>
+          <div className="tabs">
+            <button className="tab-btn" onClick={logout}>Logout</button>
+          </div>
         </div>
-      </div>
-
-      {view === 'review'    && deckId && <Review    key={deckId} deckId={deckId} />}
-      {view === 'analytics' && deckId && <Analytics key={deckId} deckId={deckId} />}
-
-      {view === 'upload' && (
         <div className="card">
           <form className="upload-form" onSubmit={handleUpload}>
             <div className="form-group">
@@ -221,7 +202,37 @@ export default function App() {
             </button>
           </form>
         </div>
-      )}
+      </div>
+    )
+  }
+
+  // ── Deck list ──
+  if (!deckId) {
+    return (
+      <DeckList
+        onSelect={(id, title) => selectDeck(id, title)}
+        onUpload={() => setView('upload')}
+        onLogout={logout}
+      />
+    )
+  }
+
+  // ── Deck detail (Review / Analytics) ──
+  return (
+    <div className="app">
+      <div className="header">
+        <button className="btn-back" onClick={backToList}>← Decks</button>
+        {deckTitle && <span className="deck-detail-title">{deckTitle}</span>}
+        <div className="tabs">
+          <button className={`tab-btn ${view === 'review' ? 'active' : ''}`} onClick={() => setView('review')}>Review</button>
+          <button className={`tab-btn ${view === 'analytics' ? 'active' : ''}`} onClick={() => setView('analytics')}>Analytics</button>
+          <button className="tab-btn" onClick={() => setView('upload')}>+ Upload</button>
+          <button className="tab-btn" onClick={logout}>Logout</button>
+        </div>
+      </div>
+
+      {view === 'review'    && <Review    key={deckId} deckId={deckId} />}
+      {view === 'analytics' && <Analytics key={deckId} deckId={deckId} />}
     </div>
   )
 }

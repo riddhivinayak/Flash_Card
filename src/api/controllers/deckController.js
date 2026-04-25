@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const Deck = require('../../db/models/Deck');
 const Card = require('../../db/models/Card');
 const CardProgress = require('../../db/models/CardProgress');
+const Review = require('../../db/models/Review');
 const { extractText, chunkText } = require('../../pdf/extractor');
 const { generateCards } = require('../../generator');
 
@@ -36,14 +38,62 @@ async function uploadDeck(req, res) {
 
 async function listDecks(req, res) {
   const decks = await Deck.find({ userId: req.userId }).sort({ createdAt: -1 });
-  res.json(decks);
+  const userObjId = new mongoose.Types.ObjectId(req.userId);
+  const now = new Date();
+
+  const enriched = await Promise.all(decks.map(async (deck) => {
+    const cardIds = await Card.find({ deckId: deck._id }).distinct('_id');
+
+    const [dueCount, reviewStats] = await Promise.all([
+      CardProgress.countDocuments({
+        cardId: { $in: cardIds },
+        $or: [
+          { status: 'new' },
+          { status: { $in: ['learning', 'mastered'] }, nextReviewDate: { $lte: now } },
+        ],
+      }),
+      Review.aggregate([
+        { $match: { deckId: deck._id, userId: userObjId } },
+        { $group: {
+          _id: null,
+          total:   { $sum: 1 },
+          correct: { $sum: { $cond: [{ $gte: ['$quality', 3] }, 1, 0] } },
+        }},
+      ]),
+    ]);
+
+    const accuracyRate = reviewStats.length
+      ? parseFloat((reviewStats[0].correct / reviewStats[0].total).toFixed(2))
+      : null;
+
+    return { ...deck.toObject(), cardCount: cardIds.length, dueCount, accuracyRate };
+  }));
+
+  res.json(enriched);
 }
 
 async function getDeck(req, res) {
   const deck = await Deck.findOne({ _id: req.params.id, userId: req.userId });
   if (!deck) return res.status(404).json({ error: 'Deck not found' });
-  const cardCount = await Card.countDocuments({ deckId: deck._id });
-  res.json({ ...deck.toObject(), cardCount });
+
+  const cardIds = await Card.find({ deckId: deck._id }).distinct('_id');
+  const dueCount = await CardProgress.countDocuments({
+    cardId: { $in: cardIds },
+    $or: [
+      { status: 'new' },
+      { status: { $in: ['learning', 'mastered'] }, nextReviewDate: { $lte: new Date() } },
+    ],
+  });
+
+  res.json({ ...deck.toObject(), cardCount: cardIds.length, dueCount });
 }
 
-module.exports = { uploadDeck, listDecks, getDeck };
+async function getDeckCards(req, res) {
+  const deck = await Deck.findOne({ _id: req.params.id, userId: req.userId });
+  if (!deck) return res.status(404).json({ error: 'Deck not found' });
+
+  const cards = await Card.find({ deckId: deck._id }).sort({ createdAt: 1 });
+  res.json(cards);
+}
+
+module.exports = { uploadDeck, listDecks, getDeck, getDeckCards };
