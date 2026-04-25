@@ -9,9 +9,9 @@ const { generateCards } = require('../../generator');
 async function uploadDeck(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No PDF uploaded' });
 
-  let text;
+  let text, pageCount, truncated;
   try {
-    text = await extractText(req.file.buffer);
+    ({ text, pageCount, truncated } = await extractText(req.file.buffer));
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -33,7 +33,11 @@ async function uploadDeck(req, res) {
   const cards = await Card.insertMany(generated.map(c => ({ ...c, deckId: deck._id })));
   await CardProgress.insertMany(cards.map(card => ({ cardId: card._id, nextReviewDate: new Date() })));
 
-  res.status(201).json({ deck, cardCount: cards.length });
+  const warning = truncated
+    ? `This PDF has ${pageCount} pages — only the first 25 were processed.`
+    : null;
+
+  res.status(201).json({ deck, cardCount: cards.length, warning });
 }
 
 async function listDecks(req, res) {

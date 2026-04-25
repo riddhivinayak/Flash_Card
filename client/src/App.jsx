@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Review from './Review'
 import Analytics from './Analytics'
+import BrowseCards from './BrowseCards'
 import DeckList from './DeckList'
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -99,12 +100,15 @@ export default function App() {
   // null = deck list, string = deck detail view
   const [deckId, setDeckId] = useState(null)
   const [deckTitle, setDeckTitle] = useState('')
-  const [view, setView] = useState('review')  // 'review' | 'analytics' | 'upload'
+  const [view, setView] = useState('review')  // 'review' | 'browse' | 'analytics' | 'upload'
+  const [browseFilter, setBrowseFilter] = useState(null) // concept string or null
 
   const [file, setFile] = useState(null)
   const [title, setTitle] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
+  const [uploadWarning, setUploadWarning] = useState(null)
+  const [uploadedDeck, setUploadedDeck] = useState(null)
 
   // On mount: validate token
   useEffect(() => {
@@ -137,6 +141,14 @@ export default function App() {
     setDeckId(null)
     setDeckTitle('')
     setView('review')
+    setBrowseFilter(null)
+    setUploadWarning(null)
+    setUploadedDeck(null)
+  }
+
+  function handleBrowse(concept = null) {
+    setBrowseFilter(concept)
+    setView('browse')
   }
 
   async function handleUpload(e) {
@@ -156,8 +168,13 @@ export default function App() {
 
       setFile(null)
       setTitle('')
-      // Go straight into the new deck's review
-      selectDeck(data.deck._id, data.deck.title)
+
+      if (data.warning) {
+        setUploadWarning(data.warning)
+        setUploadedDeck({ id: data.deck._id, title: data.deck.title })
+      } else {
+        selectDeck(data.deck._id, data.deck.title)
+      }
     } catch {
       setUploadError('Upload failed. Is the server running?')
     } finally {
@@ -194,13 +211,26 @@ export default function App() {
             </div>
             <div className="form-group">
               <label className="form-label">PDF file</label>
-              <input className="form-input" type="file" accept=".pdf" onChange={e => { setFile(e.target.files[0]); setUploadError(null) }} />
+              <input className="form-input" type="file" accept=".pdf" onChange={e => { setFile(e.target.files[0]); setUploadError(null); setUploadWarning(null); setUploadedDeck(null) }} />
             </div>
             {uploadError && <p className="upload-error">{uploadError}</p>}
-            <button className="btn-upload" type="submit" disabled={uploading}>
-              {uploading ? 'Uploading…' : 'Upload & Generate Cards'}
-            </button>
+            {!uploadWarning && (
+              <button className="btn-upload" type="submit" disabled={uploading}>
+                {uploading ? 'Uploading…' : 'Upload & Generate Cards'}
+              </button>
+            )}
           </form>
+          {uploadWarning && (
+            <div className="upload-warning">
+              <p className="upload-warning-text">⚠️ {uploadWarning}</p>
+              <button
+                className="btn-upload"
+                onClick={() => selectDeck(uploadedDeck.id, uploadedDeck.title)}
+              >
+                View Deck →
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -225,14 +255,16 @@ export default function App() {
         {deckTitle && <span className="deck-detail-title">{deckTitle}</span>}
         <div className="tabs">
           <button className={`tab-btn ${view === 'review' ? 'active' : ''}`} onClick={() => setView('review')}>Review</button>
+          <button className={`tab-btn ${view === 'browse' ? 'active' : ''}`} onClick={() => handleBrowse(null)}>Browse</button>
           <button className={`tab-btn ${view === 'analytics' ? 'active' : ''}`} onClick={() => setView('analytics')}>Analytics</button>
           <button className="tab-btn" onClick={() => setView('upload')}>+ Upload</button>
           <button className="tab-btn" onClick={logout}>Logout</button>
         </div>
       </div>
 
-      {view === 'review'    && <Review    key={deckId} deckId={deckId} />}
-      {view === 'analytics' && <Analytics key={deckId} deckId={deckId} />}
+      {view === 'review'    && <Review      key={deckId} deckId={deckId} />}
+      {view === 'browse'    && <BrowseCards key={`${deckId}-${browseFilter}`} deckId={deckId} conceptFilter={browseFilter} />}
+      {view === 'analytics' && <Analytics   key={deckId} deckId={deckId} onBrowse={handleBrowse} />}
     </div>
   )
 }

@@ -75,7 +75,7 @@ function NextReview({ date }) {
   )
 }
 
-export default function Analytics({ deckId }) {
+export default function Analytics({ deckId, onBrowse }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -100,7 +100,14 @@ export default function Analytics({ deckId }) {
           <div key={c.concept} className="card concept-row">
             <div className="concept-row-top">
               <p className="concept-name">{c.concept}</p>
-              <StatusBadge concept={c} />
+              <div className="concept-row-actions">
+                <StatusBadge concept={c} />
+                {onBrowse && (
+                  <button className="btn-browse-concept" onClick={() => onBrowse(c.concept)}>
+                    Browse →
+                  </button>
+                )}
+              </div>
             </div>
             <NextReview date={c.nextReviewDate} />
           </div>
@@ -117,7 +124,14 @@ export default function Analytics({ deckId }) {
         <div key={c.concept} className="card concept-row">
           <div className="concept-row-top">
             <p className="concept-name">{c.concept}</p>
-            <StatusBadge concept={c} />
+            <div className="concept-row-actions">
+              <StatusBadge concept={c} />
+              {onBrowse && (
+                <button className="btn-browse-concept" onClick={() => onBrowse(c.concept)}>
+                  Browse →
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="concept-stats">
