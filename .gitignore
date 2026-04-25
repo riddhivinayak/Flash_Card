@@ -1,3 +1,34 @@
-node_modules/
+# env
 .env
+.env.*
+
+# node
+node_modules/
+
+# uploads / generated files
 uploads/
+
+# logs
+*.log
+logs/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# build / dist
+dist/
+build/
+
+# cache
+.cache/
+.tmp/
+
+# vscode (optional)
+.vscode/
+
+# Claude / AI generated internal files
+.claude/
+
+# testing
+coverage/
