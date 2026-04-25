@@ -47,7 +47,7 @@ export default function DeckList({ onSelect, onUpload, onLogout }) {
             <span className="deck-item-title">{deck.title}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {deck.dueCount > 0 && (
-                <span className="deck-due-badge">{deck.dueCount} due</span>
+                <span className="deck-due-badge">🔥 {deck.dueCount} due</span>
               )}
               <button
                 className="btn-deck-delete"
@@ -66,6 +66,14 @@ export default function DeckList({ onSelect, onUpload, onLogout }) {
               : <span style={{ color: '#bbb' }}>Not reviewed yet</span>
             }
           </div>
+          {deck.accuracyRate !== null && (
+            <div className="deck-progress-bar">
+              <div
+                className={`deck-progress-fill ${progressFillClass(deck.accuracyRate)}`}
+                style={{ width: `${(deck.accuracyRate * 100).toFixed(0)}%` }}
+              />
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -76,4 +84,10 @@ function accuracyClass(rate) {
   if (rate >= 0.75) return 'acc-high'
   if (rate >= 0.5)  return 'acc-mid'
   return 'acc-low'
+}
+
+function progressFillClass(rate) {
+  if (rate >= 0.75) return 'strong'
+  if (rate >= 0.5)  return 'mid-prog'
+  return 'weak'
 }
