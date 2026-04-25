@@ -4,46 +4,92 @@ if (useMock) {
   console.warn('[generator] GEMINI_API_KEY not set — using mock card generator');
 }
 
-const SYSTEM_PROMPT = `You are a strict educational flashcard generator. Your job is to extract only meaningful knowledge from text and turn it into high-quality flashcards.
+const SYSTEM_PROMPT = `You are a strict educational flashcard generator. Extract only meaningful, teachable knowledge from text.
 
 OUTPUT FORMAT
-Return ONLY a valid JSON array. No markdown, no explanation, no wrapper text.
+Return ONLY a valid JSON array — no markdown, no explanation, no wrapper text.
 Each object must have exactly these fields:
 - "type": one of "definition", "concept", "example", "edge_case"
-- "concept": the specific technical topic this card belongs to (e.g. "binary search", "TCP handshake")
-- "front": a clear, specific question
-- "back": a precise, self-contained answer drawn directly from the text
+- "concept": the specific technical topic (e.g. "SELECT statement", "JOIN", "normalization")
+- "front": a clear question a student should be able to answer
+- "back": a precise answer drawn directly from the text (1–3 sentences)
 - "difficulty": one of "easy", "medium", "hard"
 
-WHAT TO GENERATE CARDS FOR
-Only create cards when the text contains:
-- A technical term with a clear definition
-- A process, algorithm, or step-by-step procedure
-- A cause-and-effect or why/how relationship
-- A stated rule, constraint, or principle
-- A concrete example that illustrates a concept
-- An explicitly mentioned edge case, limitation, or exception
+GENERATE CARDS ONLY FOR
+- A keyword or term that has a definition in the text
+- A SQL clause, operator, or keyword with an explained purpose
+- A rule, constraint, or principle stated in the text
+- A process or procedure with described steps
+- A concrete example that demonstrates a concept
+- An explicitly stated limitation or exception
 
-WHAT TO SKIP — return [] if the chunk contains only:
-- Proper nouns, people names, or company names without explanation
-- Random identifiers, file paths, version numbers, or metadata
-- Headings, table of contents, or navigation text
-- Sentences that are too vague to produce a specific answer
+ABSOLUTELY NEVER GENERATE CARDS FOR
+- Lecture codes, course codes, or slide labels (e.g. "LEC-9", "CS101", "Chapter 3", "Slide 12")
+- Document headings or section titles on their own
+- People names, university names, or course titles
+- Page numbers, dates, or administrative metadata
+- Any phrase you cannot fully explain in the "back" from the text alone
 
-QUESTION QUALITY RULES
-- front must be a specific question that tests understanding, not recall of trivia
-- Use question forms: "What is...", "How does...", "Why does...", "What happens when...", "What is the difference between..."
-- Never ask about a name, date, or value unless it has explicit significance explained in the text
+BAD EXAMPLES — never produce questions like these:
+- "What is LEC-9: SQL in?" — LEC-9 is a document label, not a concept
+- "What is Chapter 4?" — a heading, not a teachable concept
+- "Give an example of Introduction to Databases." — title, not content
+- "What is the edge case for it?" — vague, no specific concept
 
-ANSWER QUALITY RULES
-- back must be specific and drawn from the text — never write generic filler like "it depends on context" or "edge case when input is empty"
-- back must fully answer the question on its own without needing the source text
-- Keep answers concise but complete: 1–3 sentences
+GOOD EXAMPLES — produce questions like these:
+- "What does the SQL WHERE clause do?" → "The WHERE clause filters rows in a query result based on a specified condition."
+- "When would you use SQL IN instead of multiple OR conditions?" → "Use IN when checking if a value matches any item in a list; it is more readable than chaining multiple OR conditions."
+- "What is a primary key in a relational database?" → "A primary key uniquely identifies each row in a table and cannot be NULL or duplicate."
+
+ANSWER RULES
+- The back must be specific — never write "a concept from the text" or "edge case when input is empty"
+- The back must stand alone — a reader with no access to the source must fully understand the answer
+- Minimum 8 words in the back
 
 LIMITS
-- Generate at most 8 cards per chunk
-- Only generate a card if you can write a specific, accurate back from the text provided
-- If the chunk has no educational content worth testing, return []`;
+- At most 8 cards per chunk
+- If the chunk contains no teachable concepts after filtering noise, return []`;
+
+// Strip document-structure tokens before sending to Gemini
+function cleanChunk(text) {
+  return text
+    // Remove lecture/chapter/section codes: LEC-9, CH.3, Slide 12, Page 4, etc.
+    .replace(/\b(lec|lecture|ch|chap|chapter|sec|section|unit|mod|module|slide|pg|page|fig|table|appendix)\s*[-:.]?\s*[\d.]+\b[:.)]?/gi, '')
+    // Remove lines or fragments that are pure ALL-CAPS labels ≤ 5 words
+    .replace(/\b[A-Z]{2,}(?:\s+[A-Z]{2,}){0,4}\b(?=\s|$)/g, (match) => {
+      // Keep known meaningful acronyms (SQL, JOIN, NULL, etc.) — only strip if it looks like a code
+      return /^[A-Z]+-\d/.test(match) ? '' : match;
+    })
+    // Collapse whitespace
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Skip chunks that are too short after cleaning to produce real cards
+function isWorthProcessing(text) {
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length >= 25;
+}
+
+// Reject cards that slipped through with bad fronts or generic backs
+const BAD_FRONT = [
+  /\b(lec|lecture|chapter|section|slide|module|unit|page)\s*[-:]?\s*\d+/i,
+  /^what is "[^"]{1,10}[:\-]\s*\w{1,6}"/i, // "What is "LEC-9: SQL"?"
+];
+const GENERIC_BACK = [
+  /concept from the (uploaded )?pdf/i,
+  /key idea is derived from/i,
+  /edge case when input is empty/i,
+  /boundary conditions apply/i,
+];
+
+function isCardValid(card) {
+  if (!card.type || !card.concept || !card.front || !card.back || !card.difficulty) return false;
+  if (BAD_FRONT.some(p => p.test(card.front))) return false;
+  if (GENERIC_BACK.some(p => p.test(card.back))) return false;
+  if (card.back.split(/\s+/).length < 5) return false;
+  return true;
+}
 
 function mockGenerateCardsFromChunk(chunk) {
   const words = chunk.split(/\s+/).filter(Boolean);
@@ -59,29 +105,35 @@ function mockGenerateCardsFromChunk(chunk) {
 async function generateCardsFromChunk(chunk) {
   if (useMock) return mockGenerateCardsFromChunk(chunk);
 
+  const cleaned = cleanChunk(chunk);
+  if (!isWorthProcessing(cleaned)) {
+    console.log('[generator] skipping low-content chunk');
+    return [];
+  }
+
   const { GoogleGenerativeAI } = require('@google/generative-ai');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    systemInstruction: SYSTEM_PROMPT,
-  });
+  const model = genAI.getGenerativeModel(
+    { model: 'gemini-1.5-flash', systemInstruction: SYSTEM_PROMPT },
+    { apiVersion: 'v1' }   // gemini-1.5-flash is a stable model — use v1, not v1beta
+  );
 
   try {
-    const result = await model.generateContent(`Text:\n${chunk}`);
+    const result = await model.generateContent(`Text:\n${cleaned}`);
     const raw = result.response.text();
 
     console.log('[generator] raw Gemini output:', raw);
 
     // Strip markdown code fences if present
-    const cleaned = raw
+    const stripped = raw
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
       .replace(/```\s*$/i, '')
       .trim();
 
-    const match = cleaned.match(/\[[\s\S]*\]/);
+    const match = stripped.match(/\[[\s\S]*\]/);
     if (!match) {
-      console.error('[generator] no JSON array found in Gemini response:', cleaned);
+      console.error('[generator] no JSON array found in Gemini response:', stripped);
       console.warn('[generator] falling back to mock for this chunk');
       return mockGenerateCardsFromChunk(chunk);
     }
@@ -96,7 +148,7 @@ async function generateCardsFromChunk(chunk) {
       return mockGenerateCardsFromChunk(chunk);
     }
 
-    return cards.filter(c => c.type && c.concept && c.front && c.back && c.difficulty);
+    return cards.filter(isCardValid);
   } catch (err) {
     console.error('[generator] Gemini API error:', err.message);
     console.warn('[generator] falling back to mock for this chunk');
