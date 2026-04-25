@@ -83,6 +83,19 @@ const GENERIC_BACK = [
   /boundary conditions apply/i,
 ];
 
+const ALLOWED_TYPES = ['definition', 'concept', 'example', 'edge_case'];
+const TYPE_MAP = { rule: 'concept', principle: 'concept', process: 'concept', procedure: 'concept' };
+
+function normalizeCardType(type) {
+  if (ALLOWED_TYPES.includes(type)) return type;
+  if (TYPE_MAP[type]) {
+    console.log(`[generator] normalizing card type "${type}" → "${TYPE_MAP[type]}"`);
+    return TYPE_MAP[type];
+  }
+  console.log(`[generator] unknown card type "${type}" → "concept"`);
+  return 'concept';
+}
+
 function isCardValid(card) {
   if (!card.type || !card.concept || !card.front || !card.back || !card.difficulty) return false;
   if (BAD_FRONT.some(p => p.test(card.front))) return false;
@@ -102,29 +115,43 @@ function mockGenerateCardsFromChunk(chunk) {
   ];
 }
 
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+async function callGemini(userText) {
+  const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ parts: [{ text: userText }] }],
+    }),
+  });
+
+  const body = await res.json();
+  if (!res.ok) {
+    console.error('[generator] Gemini REST error body:', JSON.stringify(body));
+    throw new Error(`Gemini ${res.status}: ${body?.error?.message || res.statusText}`);
+  }
+  return body.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+}
+
 async function generateCardsFromChunk(chunk) {
   if (useMock) return mockGenerateCardsFromChunk(chunk);
 
   const cleaned = cleanChunk(chunk);
   if (!isWorthProcessing(cleaned)) {
-    console.log('[generator] skipping low-content chunk');
+    console.log('[generator] skipping low-content chunk (too short after cleaning)');
     return [];
   }
 
-  const { GoogleGenerativeAI } = require('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel(
-    { model: 'gemini-1.5-flash', systemInstruction: SYSTEM_PROMPT },
-    { apiVersion: 'v1' }   // gemini-1.5-flash is a stable model — use v1, not v1beta
-  );
+  console.log('[generator] chunk preview (first 120 chars):', cleaned.slice(0, 120));
+  console.log('[generator] calling Gemini API...');
 
   try {
-    const result = await model.generateContent(`Text:\n${cleaned}`);
-    const raw = result.response.text();
-
+    const raw = await callGemini(`Text:\n${cleaned}`);
+    console.log('[generator] Gemini call successful');
     console.log('[generator] raw Gemini output:', raw);
 
-    // Strip markdown code fences if present
     const stripped = raw
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -148,9 +175,15 @@ async function generateCardsFromChunk(chunk) {
       return mockGenerateCardsFromChunk(chunk);
     }
 
-    return cards.filter(isCardValid);
+    cards.forEach(c => { c.type = normalizeCardType(c.type); });
+    const valid = cards.filter(isCardValid);
+    console.log(`[generator] cards from Gemini: ${cards.length} raw, ${valid.length} valid after filtering`);
+    if (valid.length > 0) {
+      console.log('[generator] valid cards:', JSON.stringify(valid, null, 2));
+    }
+    return valid;
   } catch (err) {
-    console.error('[generator] Gemini API error:', err.message);
+    console.error('[generator] Gemini error:', err.message);
     console.warn('[generator] falling back to mock for this chunk');
     return mockGenerateCardsFromChunk(chunk);
   }

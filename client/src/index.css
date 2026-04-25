@@ -310,3 +310,47 @@ body {
   color: #aaa;
   font-size: 15px;
 }
+
+/* ── Upload form ── */
+.upload-form { display: flex; flex-direction: column; gap: 18px; }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+}
+
+.form-input {
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus { border-color: #3b5bdb; }
+
+.upload-error {
+  font-size: 13px;
+  color: #dc2626;
+}
+
+.btn-upload {
+  padding: 12px;
+  background: #3b5bdb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-upload:hover:not(:disabled) { background: #3451c7; }
+.btn-upload:disabled { opacity: 0.6; cursor: not-allowed; }

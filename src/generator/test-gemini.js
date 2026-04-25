@@ -1,9 +1,8 @@
 /**
- * Quick Gemini API smoke test.
+ * Quick Gemini REST smoke test.
  * Run with: node src/generator/test-gemini.js
  */
 require('dotenv').config();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 async function main() {
   const key = process.env.GEMINI_API_KEY;
@@ -12,24 +11,26 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('Testing Gemini API...\n');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  console.log('Testing Gemini REST API...\n');
 
-  const genAI = new GoogleGenerativeAI(key);
-  const model = genAI.getGenerativeModel(
-    { model: 'gemini-1.5-flash' },
-    { apiVersion: 'v1' }
-  );
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: 'Explain SQL IN operator in one sentence.' }] }] }),
+  });
 
-  try {
-    const result = await model.generateContent('Explain SQL IN operator in one sentence.');
-    const text = result.response.text();
-    console.log('SUCCESS — Gemini response:');
-    console.log(text);
-  } catch (err) {
-    console.error('FAILED — Gemini API error:');
-    console.error(err.message);
-    if (err.status) console.error('HTTP status:', err.status);
+  const body = await res.json();
+
+  if (!res.ok) {
+    console.error('FAILED — HTTP', res.status);
+    console.error('Full response body:', JSON.stringify(body, null, 2));
+    process.exit(1);
   }
+
+  const text = body.candidates?.[0]?.content?.parts?.[0]?.text ?? '(empty)';
+  console.log('SUCCESS — Gemini response:');
+  console.log(text);
 }
 
 main();
