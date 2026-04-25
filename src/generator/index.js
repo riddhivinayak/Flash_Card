@@ -35,7 +35,7 @@ async function generateCardsFromChunk(chunk) {
   const { GoogleGenerativeAI } = require('@google/generative-ai');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash',
     systemInstruction: SYSTEM_PROMPT,
   });
 
@@ -55,7 +55,8 @@ async function generateCardsFromChunk(chunk) {
     const match = cleaned.match(/\[[\s\S]*\]/);
     if (!match) {
       console.error('[generator] no JSON array found in Gemini response:', cleaned);
-      return [];
+      console.warn('[generator] falling back to mock for this chunk');
+      return mockGenerateCardsFromChunk(chunk);
     }
 
     let cards;
@@ -64,13 +65,15 @@ async function generateCardsFromChunk(chunk) {
     } catch (parseErr) {
       console.error('[generator] JSON.parse failed:', parseErr.message);
       console.error('[generator] broken JSON:', match[0]);
-      return [];
+      console.warn('[generator] falling back to mock for this chunk');
+      return mockGenerateCardsFromChunk(chunk);
     }
 
     return cards.filter(c => c.type && c.concept && c.front && c.back && c.difficulty);
   } catch (err) {
     console.error('[generator] Gemini API error:', err.message);
-    return [];
+    console.warn('[generator] falling back to mock for this chunk');
+    return mockGenerateCardsFromChunk(chunk);
   }
 }
 
