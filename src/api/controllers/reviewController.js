@@ -42,6 +42,7 @@ async function getReviewSession(req, res) {
     card: p.cardId,
     status: p.status,
     nextReviewDate: p.nextReviewDate,
+    interval: p.interval,
   }));
 
   res.json({ cards, dueTodayCount });

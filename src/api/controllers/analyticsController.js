@@ -59,10 +59,16 @@ async function getAnalytics(req, res) {
     { $match: { 'card.deckId': deckObjId } },
     {
       $group: {
-        _id:           '$card.concept',
-        newCount:      { $sum: { $cond: [{ $eq: ['$status', 'new'] }, 1, 0] } },
-        learningCount: { $sum: { $cond: [{ $eq: ['$status', 'learning'] }, 1, 0] } },
-        masteredCount: { $sum: { $cond: [{ $eq: ['$status', 'mastered'] }, 1, 0] } },
+        _id:                '$card.concept',
+        nextReviewDate:     { $min: '$nextReviewDate' },
+        newCount:           { $sum: { $cond: [{ $eq: ['$status', 'new'] }, 1, 0] } },
+        // learning, interval < 7 → still in early repetition phase
+        learningCount:      { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'learning'] }, { $lt: ['$interval', 7] }] }, 1, 0] } },
+        // learning, interval >= 7 → stable review phase
+        reviewingCount:     { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'learning'] }, { $gte: ['$interval', 7] }] }, 1, 0] } },
+        // lapsed: repetitions reset to 0 after a prior review (lastReviewDate set)
+        needsRevisionCount: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'learning'] }, { $eq: ['$repetitions', 0] }, { $ne: ['$lastReviewDate', null] }] }, 1, 0] } },
+        masteredCount:      { $sum: { $cond: [{ $eq: ['$status', 'mastered'] }, 1, 0] } },
       },
     },
   ]);
@@ -71,15 +77,18 @@ async function getAnalytics(req, res) {
 
   if (!reviewStats.length) {
     const concepts = statusStats.map(s => ({
-      concept: s._id,
-      totalReviews: 0,
-      correctCount: 0,
-      incorrectCount: 0,
-      accuracyRate: null,
-      avgQuality: null,
-      newCount: s.newCount,
-      learningCount: s.learningCount,
-      masteredCount: s.masteredCount,
+      concept:            s._id,
+      totalReviews:       0,
+      correctCount:       0,
+      incorrectCount:     0,
+      accuracyRate:       null,
+      avgQuality:         null,
+      nextReviewDate:     s.nextReviewDate ?? null,
+      newCount:           s.newCount,
+      learningCount:      s.learningCount,
+      reviewingCount:     s.reviewingCount,
+      needsRevisionCount: s.needsRevisionCount,
+      masteredCount:      s.masteredCount,
     }));
     return res.json({ concepts, hasReviews: false });
   }
@@ -87,15 +96,18 @@ async function getAnalytics(req, res) {
   const concepts = reviewStats.map(r => {
     const s = statusMap[r._id] || {};
     return {
-      concept:        r._id,
-      totalReviews:   r.totalReviews,
-      correctCount:   r.correctCount,
-      incorrectCount: r.incorrectCount,
-      accuracyRate:   parseFloat(r.accuracyRate.toFixed(3)),
-      avgQuality:     parseFloat(r.avgQuality.toFixed(2)),
-      newCount:       s.newCount      ?? 0,
-      learningCount:  s.learningCount ?? 0,
-      masteredCount:  s.masteredCount ?? 0,
+      concept:            r._id,
+      totalReviews:       r.totalReviews,
+      correctCount:       r.correctCount,
+      incorrectCount:     r.incorrectCount,
+      accuracyRate:       parseFloat(r.accuracyRate.toFixed(3)),
+      avgQuality:         parseFloat(r.avgQuality.toFixed(2)),
+      nextReviewDate:     s.nextReviewDate ?? null,
+      newCount:           s.newCount           ?? 0,
+      learningCount:      s.learningCount      ?? 0,
+      reviewingCount:     s.reviewingCount     ?? 0,
+      needsRevisionCount: s.needsRevisionCount ?? 0,
+      masteredCount:      s.masteredCount      ?? 0,
     };
   });
 

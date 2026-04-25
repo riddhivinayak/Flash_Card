@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { authHeaders } from './App'
+import { nextReviewLabel } from './utils'
 
 const TYPE_LABELS = {
   definition: 'Definition',
@@ -15,6 +16,7 @@ function qualityClass(q) {
   if (q === 2) return 'mid'
   return 'pass'
 }
+
 
 export default function Review({ deckId }) {
   const [cards, setCards] = useState([])
@@ -39,9 +41,7 @@ export default function Review({ deckId }) {
 
   const current = cards[index]
 
-  function reveal() {
-    setRevealed(true)
-  }
+  function reveal() { setRevealed(true) }
 
   async function submitQuality(quality) {
     setSubmitting(true)
@@ -69,6 +69,10 @@ export default function Review({ deckId }) {
   if (loading) return <p className="state-message">Loading cards…</p>
   if (!cards.length) return <p className="state-message">No cards due for review. Check back tomorrow!</p>
   if (done) return <p className="state-message">Session complete — {dueTodayCount} cards were due today.</p>
+
+  // After submitting a rating, the new nextReviewDate comes from the SM-2 result
+  const scheduledDate = result?.progress?.nextReviewDate ?? current.nextReviewDate
+  const nextLabel = nextReviewLabel(scheduledDate)
 
   return (
     <>
@@ -141,7 +145,12 @@ export default function Review({ deckId }) {
           )}
 
           {result && (
-            <button className="btn-next" onClick={next}>Next →</button>
+            <>
+              {nextLabel && (
+                <p className="next-review-label">Next review: <strong>{nextLabel}</strong></p>
+              )}
+              <button className="btn-next" onClick={next}>Next →</button>
+            </>
           )}
         </div>
       )}

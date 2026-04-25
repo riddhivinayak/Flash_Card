@@ -96,4 +96,17 @@ async function getDeckCards(req, res) {
   res.json(cards);
 }
 
-module.exports = { uploadDeck, listDecks, getDeck, getDeckCards };
+async function deleteDeck(req, res) {
+  const deck = await Deck.findOne({ _id: req.params.id, userId: req.userId });
+  if (!deck) return res.status(404).json({ error: 'Deck not found' });
+
+  const cards = await Card.find({ deckId: deck._id }).distinct('_id');
+  await CardProgress.deleteMany({ cardId: { $in: cards } });
+  await Review.deleteMany({ deckId: deck._id });
+  await Card.deleteMany({ deckId: deck._id });
+  await Deck.deleteOne({ _id: deck._id });
+
+  res.json({ ok: true });
+}
+
+module.exports = { uploadDeck, listDecks, getDeck, getDeckCards, deleteDeck };
