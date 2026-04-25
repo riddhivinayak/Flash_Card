@@ -26,10 +26,16 @@ export default function Flashcard({ card, flipped }) {
         {phase !== 'back' ? (
           <>
             <span className="badge">{typeLabel} · {card.concept}</span>
+            {card.tags?.includes('diagram') && (
+              <span className="diagram-badge">Diagram</span>
+            )}
             <p className="question">{card.front}</p>
           </>
         ) : (
           <>
+            {card.tags?.includes('diagram') && (
+              <span className="diagram-badge">Diagram</span>
+            )}
             <p className="answer-label">Answer</p>
             <p className="answer-text">{card.back}</p>
           </>

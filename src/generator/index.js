@@ -119,12 +119,36 @@ function textFallbackCards(text, target) {
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
-async function callGemini(userText) {
+const DIAGRAM_KEYWORDS = /\b(figure|fig\.|diagram|graph|chart|flowchart)\b/i;
+const DIAGRAM_WORD_THRESHOLD = 80;
+
+function isDiagramChunk(text) {
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  return wordCount < DIAGRAM_WORD_THRESHOLD && DIAGRAM_KEYWORDS.test(text);
+}
+
+const DIAGRAM_PROMPT = `You are a flashcard generator for diagram-adjacent content.
+The text below comes from a PDF section that references a diagram, figure, chart, or graph.
+You cannot see the actual image. Generate 1–2 flashcards based entirely on the surrounding text, caption, or label present.
+
+OUTPUT FORMAT
+Return ONLY a valid JSON array — no markdown, no explanation.
+Each object must have exactly these fields:
+- "type": "concept"
+- "concept": the topic the diagram relates to (short noun phrase)
+- "front": a question referencing the visual, e.g. "What does the diagram illustrating <concept> show?" or "What relationship does the <concept> chart represent?"
+- "back": a conceptual explanation inferred from the surrounding text (1–3 sentences, minimum 8 words)
+- "difficulty": one of "easy", "medium", "hard"
+- "tags": ["diagram"]
+
+Generate 1–2 cards only. Explain the concept the diagram represents — do not describe the image itself.`;
+
+async function callGemini(userText, systemPrompt = SYSTEM_PROMPT) {
   const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: userText }] }],
     }),
   });
@@ -137,10 +161,58 @@ async function callGemini(userText) {
   return body.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
+async function generateDiagramCards(chunk) {
+  if (useMock) {
+    return [{
+      type: 'concept',
+      concept: 'Diagram',
+      front: 'What does the diagram in this section illustrate?',
+      back: chunk.trim().slice(0, 200) || 'A visual representation of a key concept.',
+      difficulty: 'medium',
+      tags: ['diagram'],
+    }];
+  }
+
+  console.log('[generator] diagram chunk — calling Gemini with diagram prompt');
+  try {
+    const raw = await callGemini(`Text:\n${chunk}`, DIAGRAM_PROMPT);
+    const stripped = raw
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+
+    const match = stripped.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+
+    let cards;
+    try { cards = JSON.parse(match[0]); } catch { return []; }
+
+    cards.forEach(c => {
+      c.type = 'concept';
+      if (!Array.isArray(c.tags)) c.tags = ['diagram'];
+      else if (!c.tags.includes('diagram')) c.tags.push('diagram');
+    });
+
+    const valid = cards.filter(isCardValid).slice(0, 2);
+    console.log(`[generator] diagram cards produced: ${valid.length}`);
+    return valid;
+  } catch (err) {
+    console.error('[generator] diagram generation failed:', err.message);
+    return [];
+  }
+}
+
 async function generateCardsFromChunk(chunk) {
   if (useMock) return textFallbackCards(chunk, 8);
 
   const cleaned = cleanChunk(chunk);
+
+  // Diagram chunks are intentionally short — check before the word-count skip
+  if (isDiagramChunk(cleaned)) {
+    return generateDiagramCards(cleaned);
+  }
+
   if (!isWorthProcessing(cleaned)) {
     console.log('[generator] skipping low-content chunk (too short after cleaning)');
     return [];
