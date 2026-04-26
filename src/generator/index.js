@@ -72,17 +72,12 @@ const TYPE_MAP = { rule: 'concept', principle: 'concept', process: 'concept', pr
 function normalizeCardType(type) {
   if (!type) return 'concept';
   if (ALLOWED_TYPES.includes(type)) return type;
-  if (TYPE_MAP[type]) {
-    console.log(`[generator] normalizing card type "${type}" → "${TYPE_MAP[type]}"`);
-    return TYPE_MAP[type];
-  }
-  console.log(`[generator] unknown card type "${type}" → "concept"`);
+  if (TYPE_MAP[type]) return TYPE_MAP[type];
   return 'concept';
 }
 
 // Text-based fallback: build simple cards directly from sentences when Gemini returns nothing
 function textFallbackCards(text, target) {
-  console.warn('[generator] using text fallback — building cards from raw sentences');
   const sentences = text
     .replace(/\n+/g, ' ')
     .split(/(?<=[.!?])\s+/)
@@ -115,7 +110,6 @@ function textFallbackCards(text, target) {
     });
   }
 
-  console.log(`[generator] text fallback produced ${cards.length} cards`);
   return cards;
 }
 
@@ -157,7 +151,6 @@ async function callGemini(userText, systemPrompt = SYSTEM_PROMPT) {
 
   const body = await res.json();
   if (!res.ok) {
-    console.error('[generator] Gemini REST error body:', JSON.stringify(body));
     throw new Error(`Gemini ${res.status}: ${body?.error?.message || res.statusText}`);
   }
   return body.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
@@ -175,7 +168,6 @@ async function generateDiagramCards(chunk) {
     }];
   }
 
-  console.log('[generator] diagram chunk — calling Gemini with diagram prompt');
   try {
     const raw = await callGemini(`Text:\n${chunk}`, DIAGRAM_PROMPT);
     const stripped = raw
@@ -196,9 +188,7 @@ async function generateDiagramCards(chunk) {
       else if (!c.tags.includes('diagram')) c.tags.push('diagram');
     });
 
-    const valid = cards.filter(isCardValid).slice(0, 2);
-    console.log(`[generator] diagram cards produced: ${valid.length}`);
-    return valid;
+    return cards.filter(isCardValid).slice(0, 2);
   } catch (err) {
     console.error('[generator] diagram generation failed:', err.message);
     return [];
@@ -215,18 +205,10 @@ async function generateCardsFromChunk(chunk) {
     return generateDiagramCards(cleaned);
   }
 
-  if (!isWorthProcessing(cleaned)) {
-    console.log('[generator] skipping low-content chunk (too short after cleaning)');
-    return [];
-  }
-
-  console.log('[generator] chunk preview (first 120 chars):', cleaned.slice(0, 120));
-  console.log('[generator] calling Gemini API...');
+  if (!isWorthProcessing(cleaned)) return [];
 
   try {
     const raw = await callGemini(`Text:\n${cleaned}`);
-    console.log('[generator] Gemini call successful');
-    console.log('FULL GEMINI RESPONSE:', raw);
 
     const stripped = raw
       .replace(/^```json\s*/i, '')
@@ -235,28 +217,19 @@ async function generateCardsFromChunk(chunk) {
       .trim();
 
     const match = stripped.match(/\[[\s\S]*\]/);
-    if (!match) {
-      console.error('[generator] no JSON array found in Gemini response');
-      return textFallbackCards(chunk, 8);
-    }
+    if (!match) return textFallbackCards(chunk, 8);
 
     let cards;
     try {
       cards = JSON.parse(match[0]);
-    } catch (parseErr) {
-      console.error('[generator] JSON.parse failed:', parseErr.message);
+    } catch {
       return textFallbackCards(chunk, 8);
     }
 
     cards.forEach(c => { c.type = normalizeCardType(c.type); });
     const valid = cards.filter(isCardValid);
-    console.log(`[generator] cards from Gemini: ${cards.length} raw, ${valid.length} valid after filtering`);
 
-    // If Gemini returned [] or everything got filtered out, use text fallback for this chunk
-    if (valid.length === 0) {
-      console.warn('[generator] Gemini returned no usable cards for this chunk — using text fallback');
-      return textFallbackCards(chunk, 8);
-    }
+    if (valid.length === 0) return textFallbackCards(chunk, 8);
 
     return valid;
   } catch (err) {
@@ -267,35 +240,22 @@ async function generateCardsFromChunk(chunk) {
 
 async function generateCards(chunks, totalWords = 0) {
   const target = totalWords < 500 ? 6 : totalWords < 1500 ? 8 : 10;
-  console.log(`[generator] word count: ${totalWords} → target: ${target} cards, chunks: ${chunks.length}`);
 
-  const limit = pLimit(3); // max 3 concurrent Gemini calls
+  const limit = pLimit(3);
 
   const results = await Promise.allSettled(
     chunks.map(chunk => limit(() => generateCardsFromChunk(chunk)))
   );
 
-  const successful = results.filter(r => r.status === 'fulfilled');
-  const failed     = results.filter(r => r.status === 'rejected');
+  const all = results
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value);
 
-  if (failed.length > 0) {
-    console.warn(`[generator] ${failed.length} chunk(s) failed:`,
-      failed.map(f => f.reason?.message));
-  }
-  console.log(`[generator] chunks: ${successful.length} succeeded, ${failed.length} failed`);
-
-  const all = successful.flatMap(r => r.value);
-
-  // Hard guarantee: if every chunk failed or returned nothing, fall back on raw text
   if (all.length === 0) {
-    console.warn('[generator] zero cards after all chunks — running full-text fallback');
-    const fullText = chunks.join(' ');
-    all.push(...textFallbackCards(fullText, target));
+    all.push(...textFallbackCards(chunks.join(' '), target));
   }
 
-  const final = all.slice(0, target);
-  console.log(`[generator] final card count: ${final.length}`);
-  return final;
+  return all.slice(0, target);
 }
 
 module.exports = { generateCards, generateCardsFromChunk };
