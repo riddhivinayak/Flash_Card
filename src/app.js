@@ -6,7 +6,7 @@ const deckRoutes = require('./api/routes/decks');
 const reviewRoutes = require('./api/routes/reviews');
 const auth = require('./api/middleware/auth');
 
-const CLIENT_DIST = path.join(__dirname, '../client/dist');
+const CLIENT_DIST = path.join(process.cwd(), 'client', 'dist');
 
 function createApp() {
   const app = express();
