@@ -6,8 +6,15 @@ const Review = require('../../db/models/Review');
 const { extractText, chunkText } = require('../../pdf/extractor');
 const { generateCards } = require('../../generator');
 
+const DECK_LIMIT = 12;
+
 async function uploadDeck(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No PDF uploaded' });
+
+  const deckCount = await Deck.countDocuments({ userId: req.userId });
+  if (deckCount >= DECK_LIMIT) {
+    return res.status(400).json({ error: 'Deck limit reached. Master one deck before moving to the next.' });
+  }
 
   let text, pageCount, truncated;
   try {
