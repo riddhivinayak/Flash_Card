@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { authHeaders } from './App'
 
-export default function DeckList({ onSelect, onUpload, onLogout }) {
+export default function DeckList({ onSelect, onUpload, onLogout, onDecksLoaded, theme, onToggleTheme }) {
   const [decks, setDecks] = useState([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState(null)
@@ -9,7 +9,7 @@ export default function DeckList({ onSelect, onUpload, onLogout }) {
   useEffect(() => {
     fetch('/api/decks', { headers: authHeaders() })
       .then(r => r.json())
-      .then(data => { setDecks(Array.isArray(data) ? data : []); setLoading(false) })
+      .then(data => { const list = Array.isArray(data) ? data : []; setDecks(list); onDecksLoaded?.(list.length); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
 
@@ -19,7 +19,7 @@ export default function DeckList({ onSelect, onUpload, onLogout }) {
     setDeletingId(deckId)
     try {
       await fetch(`/api/decks/${deckId}`, { method: 'DELETE', headers: authHeaders() })
-      setDecks(prev => prev.filter(d => d._id !== deckId))
+      setDecks(prev => { const next = prev.filter(d => d._id !== deckId); onDecksLoaded?.(next.length); return next })
     } finally {
       setDeletingId(null)
     }
@@ -36,9 +36,20 @@ export default function DeckList({ onSelect, onUpload, onLogout }) {
             <p className="deck-list-subtitle">{decks.length} deck{decks.length !== 1 ? 's' : ''}</p>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-primary" onClick={onUpload}>+ Upload PDF</button>
-          <button className="btn-secondary" onClick={onLogout}>Logout</button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-primary" onClick={onUpload} disabled={decks.length >= 12} title={decks.length >= 12 ? 'Deck limit reached' : undefined}>
+              + Upload PDF
+            </button>
+            <button className="btn-theme" onClick={onToggleTheme}>{theme === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>
+            <button className="btn-secondary" onClick={onLogout}>Logout</button>
+          </div>
+          {decks.length >= 12 && (
+            <p className="deck-limit-hint">Limit reached: 12 decks per user</p>
+          )}
+          {decks.length > 0 && decks.length < 12 && (
+            <p className="deck-limit-hint">{decks.length} / 12 decks</p>
+          )}
         </div>
       </div>
 
@@ -53,7 +64,12 @@ export default function DeckList({ onSelect, onUpload, onLogout }) {
           {decks.map(deck => (
             <div key={deck._id} className="deck-card" onClick={() => onSelect(deck._id, deck.title)}>
               <div className="deck-card-header">
-                <h3 className="deck-card-title">{deck.title}</h3>
+                <div className="deck-card-title-row">
+                  <h3 className="deck-card-title">{deck.title}</h3>
+                  {deck.dueCount > 0 && (
+                    <span className="deck-due-badge">🔥 {deck.dueCount} due</span>
+                  )}
+                </div>
                 <button
                   className="btn-deck-delete"
                   onClick={e => handleDelete(e, deck._id)}
@@ -66,9 +82,6 @@ export default function DeckList({ onSelect, onUpload, onLogout }) {
 
               <div className="deck-card-stats">
                 <span className="deck-stat-chip">{deck.cardCount} cards</span>
-                {deck.dueCount > 0 && (
-                  <span className="deck-due-badge">🔥 {deck.dueCount} due</span>
-                )}
                 {deck.accuracyRate !== null && (
                   <span className={`deck-stat-chip ${accuracyClass(deck.accuracyRate)}`}>
                     {(deck.accuracyRate * 100).toFixed(0)}% accuracy

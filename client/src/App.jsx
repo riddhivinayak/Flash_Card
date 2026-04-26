@@ -103,6 +103,16 @@ export default function App() {
   const [view, setView] = useState('review')  // 'review' | 'browse' | 'analytics' | 'upload'
   const [browseFilter, setBrowseFilter] = useState(null) // concept string or null
 
+  const [deckCount, setDeckCount] = useState(0)
+  const [deckLimitError, setDeckLimitError] = useState(false)
+
+  const [theme, setTheme] = useState(() => localStorage.getItem('fc_theme') || 'light')
+  useEffect(() => {
+    document.body.classList.toggle('dark', theme === 'dark')
+    localStorage.setItem('fc_theme', theme)
+  }, [theme])
+  function toggleTheme() { setTheme(t => t === 'dark' ? 'light' : 'dark') }
+
   const [file, setFile] = useState(null)
   const [title, setTitle] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -146,6 +156,7 @@ export default function App() {
     setBrowseFilter(null)
     setUploadWarning(null)
     setUploadedDeck(null)
+    setDeckLimitError(false)
   }
 
   function handleBrowse(concept = null) {
@@ -163,6 +174,7 @@ export default function App() {
 
   async function handleUpload(e) {
     e.preventDefault()
+    if (deckCount >= 12) return setUploadError('Deck limit reached. Master one deck before moving to the next.')
     if (!file) return setUploadError('Select a PDF file first.')
     setUploading(true)
     setUploadError(null)
@@ -219,7 +231,8 @@ export default function App() {
       <div className="app">
         <div className="header">
           <button className="btn-back" onClick={backToList}>← Back</button>
-          <button className="btn-secondary" style={{ marginLeft: 'auto' }} onClick={logout}>Logout</button>
+          <button className="btn-theme" style={{ marginLeft: 'auto' }} onClick={toggleTheme}>{theme === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>
+          <button className="btn-secondary" onClick={logout}>Logout</button>
         </div>
         <div className="card">
           <form className="upload-form" onSubmit={handleUpload}>
@@ -267,6 +280,9 @@ export default function App() {
         onSelect={(id, title) => selectDeck(id, title)}
         onUpload={() => setView('upload')}
         onLogout={logout}
+        onDecksLoaded={setDeckCount}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     )
   }
@@ -283,7 +299,15 @@ export default function App() {
           <button className={`tab-btn ${view === 'analytics' ? 'active' : ''}`} onClick={() => setView('analytics')}>Analytics</button>
         </div>
         <div className="header-actions">
-          <button className="btn-secondary" onClick={() => setView('upload')}>+ Upload</button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <button className="btn-secondary" onClick={() => {
+              if (deckCount >= 12) { setDeckLimitError(true); return }
+              setDeckLimitError(false)
+              setView('upload')
+            }}>+ Upload</button>
+            {deckLimitError && <p className="deck-limit-hint" style={{ color: 'var(--danger)' }}>Deck limit reached (12 max)</p>}
+          </div>
+          <button className="btn-theme" onClick={toggleTheme}>{theme === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>
           <button className="btn-secondary" onClick={logout}>Logout</button>
         </div>
       </div>
