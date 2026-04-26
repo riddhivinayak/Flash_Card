@@ -21,6 +21,7 @@ function createApp() {
 
   // Serve React frontend in production
   if (process.env.NODE_ENV === 'production') {
+    console.log('[static] serving from:', CLIENT_DIST);
     app.use(express.static(CLIENT_DIST));
     app.get('*', (req, res) =>
       res.sendFile(path.join(CLIENT_DIST, 'index.html'))
