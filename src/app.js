@@ -7,6 +7,8 @@ const reviewRoutes = require('./api/routes/reviews');
 const auth = require('./api/middleware/auth');
 
 const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
+console.log('[boot] __dirname   :', __dirname);
+console.log('[boot] CLIENT_DIST :', CLIENT_DIST);
 
 function createApp() {
   const app = express();
