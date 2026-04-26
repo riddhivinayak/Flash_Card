@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Review from './Review'
 import Analytics from './Analytics'
 import BrowseCards from './BrowseCards'
@@ -106,9 +106,11 @@ export default function App() {
   const [file, setFile] = useState(null)
   const [title, setTitle] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState('')
   const [uploadError, setUploadError] = useState(null)
   const [uploadWarning, setUploadWarning] = useState(null)
   const [uploadedDeck, setUploadedDeck] = useState(null)
+  const uploadMsgTimer = useRef(null)
 
   // On mount: validate token
   useEffect(() => {
@@ -151,11 +153,27 @@ export default function App() {
     setView('browse')
   }
 
+  const UPLOAD_MESSAGES = [
+    'Uploading PDF…',
+    'Generating flashcards…',
+    'Analyzing document…',
+    'Processing content…',
+    'Almost there…',
+  ]
+
   async function handleUpload(e) {
     e.preventDefault()
     if (!file) return setUploadError('Select a PDF file first.')
     setUploading(true)
     setUploadError(null)
+
+    // Cycle through status messages while waiting
+    let msgIndex = 0
+    setUploadMsg(UPLOAD_MESSAGES[0])
+    uploadMsgTimer.current = setInterval(() => {
+      msgIndex = (msgIndex + 1) % UPLOAD_MESSAGES.length
+      setUploadMsg(UPLOAD_MESSAGES[msgIndex])
+    }, 3500)
 
     const form = new FormData()
     form.append('pdf', file)
@@ -178,6 +196,8 @@ export default function App() {
     } catch {
       setUploadError('Upload failed. Is the server running?')
     } finally {
+      clearInterval(uploadMsgTimer.current)
+      setUploadMsg('')
       setUploading(false)
     }
   }
@@ -199,9 +219,7 @@ export default function App() {
       <div className="app">
         <div className="header">
           <button className="btn-back" onClick={backToList}>← Back</button>
-          <div className="tabs">
-            <button className="tab-btn" onClick={logout}>Logout</button>
-          </div>
+          <button className="btn-secondary" style={{ marginLeft: 'auto' }} onClick={logout}>Logout</button>
         </div>
         <div className="card">
           <form className="upload-form" onSubmit={handleUpload}>
@@ -214,9 +232,15 @@ export default function App() {
               <input className="form-input" type="file" accept=".pdf" onChange={e => { setFile(e.target.files[0]); setUploadError(null); setUploadWarning(null); setUploadedDeck(null) }} />
             </div>
             {uploadError && <p className="upload-error">{uploadError}</p>}
+            {uploading && (
+              <div className="upload-progress">
+                <span className="upload-progress-dot" />
+                <p className="upload-progress-text">{uploadMsg}</p>
+              </div>
+            )}
             {!uploadWarning && (
               <button className="btn-upload" type="submit" disabled={uploading}>
-                {uploading ? 'Uploading…' : 'Upload & Generate Cards'}
+                {uploading ? uploadMsg || 'Uploading…' : 'Upload & Generate Cards'}
               </button>
             )}
           </form>
@@ -257,8 +281,10 @@ export default function App() {
           <button className={`tab-btn ${view === 'review' ? 'active' : ''}`} onClick={() => setView('review')}>Review</button>
           <button className={`tab-btn ${view === 'browse' ? 'active' : ''}`} onClick={() => handleBrowse(null)}>Browse</button>
           <button className={`tab-btn ${view === 'analytics' ? 'active' : ''}`} onClick={() => setView('analytics')}>Analytics</button>
-          <button className="tab-btn" onClick={() => setView('upload')}>+ Upload</button>
-          <button className="tab-btn" onClick={logout}>Logout</button>
+        </div>
+        <div className="header-actions">
+          <button className="btn-secondary" onClick={() => setView('upload')}>+ Upload</button>
+          <button className="btn-secondary" onClick={logout}>Logout</button>
         </div>
       </div>
 

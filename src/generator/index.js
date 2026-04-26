@@ -1,3 +1,5 @@
+const pLimit = require('p-limit').default;
+
 const useMock = !process.env.GEMINI_API_KEY;
 
 if (useMock) {
@@ -265,16 +267,26 @@ async function generateCardsFromChunk(chunk) {
 
 async function generateCards(chunks, totalWords = 0) {
   const target = totalWords < 500 ? 6 : totalWords < 1500 ? 8 : 10;
-  console.log(`[generator] word count: ${totalWords} → target: ${target} cards`);
+  console.log(`[generator] word count: ${totalWords} → target: ${target} cards, chunks: ${chunks.length}`);
 
-  const all = [];
-  for (const chunk of chunks) {
-    if (all.length >= target) break;
-    const cards = await generateCardsFromChunk(chunk);
-    all.push(...cards);
+  const limit = pLimit(3); // max 3 concurrent Gemini calls
+
+  const results = await Promise.allSettled(
+    chunks.map(chunk => limit(() => generateCardsFromChunk(chunk)))
+  );
+
+  const successful = results.filter(r => r.status === 'fulfilled');
+  const failed     = results.filter(r => r.status === 'rejected');
+
+  if (failed.length > 0) {
+    console.warn(`[generator] ${failed.length} chunk(s) failed:`,
+      failed.map(f => f.reason?.message));
   }
+  console.log(`[generator] chunks: ${successful.length} succeeded, ${failed.length} failed`);
 
-  // Hard guarantee: if we still have nothing, run text fallback over all chunks combined
+  const all = successful.flatMap(r => r.value);
+
+  // Hard guarantee: if every chunk failed or returned nothing, fall back on raw text
   if (all.length === 0) {
     console.warn('[generator] zero cards after all chunks — running full-text fallback');
     const fullText = chunks.join(' ');

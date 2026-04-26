@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const { uploadDeck, listDecks, getDeck, getDeckCards, deleteDeck } = require('../controllers/deckController');
+const { hourlyLimit, dailyLimit } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 const upload = multer({
@@ -28,7 +29,7 @@ function handleUploadMiddleware(req, res, next) {
   });
 }
 
-router.post('/upload', handleUploadMiddleware, uploadDeck);
+router.post('/upload', hourlyLimit, dailyLimit, handleUploadMiddleware, uploadDeck);
 router.get('/', listDecks);
 router.get('/:id', getDeck);
 router.get('/:id/cards', getDeckCards);
