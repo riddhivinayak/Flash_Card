@@ -20,7 +20,7 @@ A full-stack PDF-to-flashcard system powered by Google Gemini and SM-2 spaced re
 
 ## Screenshots
 
-> _Screenshots or a demo GIF can be added here._
+
 
 | Deck List | Review Mode | Analytics |
 |-----------|-------------|-----------|
