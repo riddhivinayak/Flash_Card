@@ -1,6 +1,7 @@
 const express = require('express');
 const { getReviewSession, submitReview } = require('../controllers/reviewController');
 const { getAnalytics } = require('../controllers/analyticsController');
+const { hourlyLimit, dailyLimit } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -9,7 +10,7 @@ router.get('/decks/:id/analytics', getAnalytics);
 router.post('/reviews', submitReview);
 
 
-router.get('/list-models', async (req, res) => {
+router.get('/list-models', hourlyLimit, dailyLimit, async (req, res) => {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
@@ -30,7 +31,7 @@ router.get('/list-models', async (req, res) => {
   }
 });
 
-router.get('/test-gemini', async (req, res) => {
+router.get('/test-gemini', hourlyLimit, dailyLimit, async (req, res) => {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
