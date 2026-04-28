@@ -139,21 +139,31 @@ Each object must have exactly these fields:
 
 Generate 1–2 cards only. Explain the concept the diagram represents — do not describe the image itself.`;
 
-async function callGemini(userText, systemPrompt = SYSTEM_PROMPT) {
-  const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userText }] }],
-    }),
-  });
+async function callGemini(userText, systemPrompt = SYSTEM_PROMPT, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: userText }] }],
+      }),
+    });
 
-  const body = await res.json();
-  if (!res.ok) {
-    throw new Error(`Gemini ${res.status}: ${body?.error?.message || res.statusText}`);
+    const body = await res.json();
+
+    if (res.status === 503 && attempt < retries) {
+      const delay = attempt * 2000;
+      console.warn(`[generator] Gemini 503, retrying in ${delay}ms (attempt ${attempt}/${retries})`);
+      await new Promise(r => setTimeout(r, delay));
+      continue;
+    }
+
+    if (!res.ok) {
+      throw new Error(`Gemini ${res.status}: ${body?.error?.message || res.statusText}`);
+    }
+    return body.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   }
-  return body.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
 async function generateDiagramCards(chunk) {
